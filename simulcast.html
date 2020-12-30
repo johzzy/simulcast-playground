@@ -22,29 +22,55 @@
         <h2>Remote Videos</h2>
     </div>
     <script>
-        const pc1 = new RTCPeerConnection({ sdpSemantics: 'unified-plan' });
-        const pc2 = new RTCPeerConnection({ sdpSemantics: 'unified-plan' });
-        pc1.onicecandidate = (e) => pc2.addIceCandidate(e.candidate);
-        pc2.onicecandidate = (e) => pc1.addIceCandidate(e.candidate);
-        pc2.ontrack = (e) => show(e.streams[0], true);
+
+        function whiteNoiseStream(resolution) {
+            let canvas = Object.assign(document.createElement("canvas"), resolution);
+            let ctx = canvas.getContext('2d');
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            let p = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            requestAnimationFrame(function draw() {
+                for (var i = 0; i < p.data.length; i++) {
+                    p.data[i++] = Math.random() * 255;
+                    p.data[i++] = Math.random() * 255;
+                    p.data[i++] = Math.random() * 255;
+                }
+                ctx.putImageData(p, 0, 0);
+                return requestAnimationFrame(draw);
+            });
+            return canvas.captureStream(60)
+        }
+
+        function console_log(text, sdp) {
+            console.log(`\n===== ${text} sdp: =====\n${sdp}`)
+        }
+
+        const pc1 = new RTCPeerConnection({ sdpSemantics: 'unified-plan' })
+        const pc2 = new RTCPeerConnection({ sdpSemantics: 'unified-plan' })
+        pc1.onicecandidate = e => pc2.addIceCandidate(e.candidate)
+        pc2.onicecandidate = e => pc1.addIceCandidate(e.candidate)
+        pc2.ontrack = e => show(e.streams[0], true)
 
         const extensionsToFilter = [
             'urn:ietf:params:rtp-hdrext:sdes:mid',
             'urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id',
             'urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id',
-        ];
-        const rids = [0, 1, 2];
+        ]
+        const rids = [0, 1, 2]
         navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
+        // let promise = new Promise(() => {
+        //         return whiteNoiseStream({ width: 1280, height: 720 })
+        //     })
             .then((stream) => {
-                let videoTrack = stream.getVideoTracks()[0];
+                let videoTrack = stream.getVideoTracks()[0]
                 pc1.addTransceiver(videoTrack, {
                     streams: [stream],
                     sendEncodings: rids.map(rid => ({ rid })),
-                });
+                })
                 show(stream, false);
                 return pc1.createOffer();
             })
             .then((offer) => {
+                console_log('pc1.createOffer(offer, origin)', offer.sdp)
                 const sections = SDPUtils.splitSections(offer.sdp);
                 const dtls = SDPUtils.getDtlsParameters(sections[1], sections[0]);
                 const ice = SDPUtils.getIceParameters(sections[1], sections[0]);
@@ -74,6 +100,7 @@
                         mux: rtcpParameters.mux,
                         reducedSize: rtcpParameters.reducedSize,
                     });
+                // console.log('codecs:', codecs);
                 sdp += codecs +
                     'a=setup:actpass\r\n' +
                     'a=mid:' + rids[0] + '\r\n' +
@@ -87,7 +114,7 @@
                     'a=mid:' + rids[2] + '\r\n' +
                     'a=msid:hi hi\r\n';
 
-                console.log(sdp)
+                console_log('pc2.setRemoteDescription(offer, modified)', sdp)
                 return Promise.all([
                     pc1.setLocalDescription(offer),
                     pc2.setRemoteDescription({
@@ -98,6 +125,7 @@
             })
             .then(() => pc2.createAnswer())
             .then(answer => {
+                console_log('pc2.createAnswer(answer, origin)', answer.sdp)
                 const sections = SDPUtils.splitSections(answer.sdp);
                 const dtls = SDPUtils.getDtlsParameters(sections[1], sections[0]);
                 const ice = SDPUtils.getIceParameters(sections[1], sections[0]);
@@ -134,7 +162,7 @@
                         sdp += 'a=extmap:' + ext.id + ' ' + ext.uri + '\r\n';
                     }
                 });
-                console.log('pc1 remote sdp:', sdp)
+                console_log('pc1.setRemoteDescription(answer, modified)', sdp)
                 return Promise.all([
                     pc2.setLocalDescription(answer),
                     pc1.setRemoteDescription({
