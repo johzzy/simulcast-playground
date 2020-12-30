@@ -9,6 +9,9 @@ let lastRecvResult;
 // Only for Firefox.
 let ssrc2track;
 
+const idSeries = new Map()
+const colorSeries = new Map()
+
 // Show a stream and draw graphs.
 function show(stream, isRemote) {
     const id = isRemote ? stream.id : 'local';
@@ -20,7 +23,24 @@ function show(stream, isRemote) {
     const v = document.createElement('video');
     v.autoplay = true;
     v.srcObject = stream;
-    v.onresize = () => v.title = 'video dimensions: ' + v.videoWidth + 'x' + v.videoHeight;
+    v.onresize = () => {
+        const labelId = container.id + 'Label';
+        v.title = 'video dimensions: ' + v.videoWidth + 'x' + v.videoHeight;
+        v.innerHTML = v.title
+        const label = document.getElementById(labelId) || document.createElement('p');
+        if (label.id.length == 0) {
+            label.id = labelId;
+            container.appendChild(label);
+        } 
+        label.innerHTML = v.title
+
+        if (isRemote) {
+            idSeries[v.videoWidth + 'x' + v.videoHeight] = id
+            const color = colorSeries[v.videoWidth + 'x' + v.videoHeight]
+            bitrateSeries[id].setColor(color);
+            framerateSeries[id].setColor(color);
+        }
+    }
     container.appendChild(v);
 
     const bitrateCanvas = document.createElement('canvas');
@@ -68,6 +88,30 @@ async function draw(pc1, pc2) {
                 } else if (bitrateSeries[graphName].size === 3) {
                     series.setColor('blue');
                 }
+            
+                bitrateSeries[graphName].get(ssrc).addPoint(now, bitrate);
+
+                //  calculate framerate.
+                const framerate = 1000 * (frames - lastSendResult.get(report.id).framesEncoded) /
+                    (now - lastSendResult.get(report.id).timestamp);
+                if (!framerateSeries[graphName].has(ssrc)) {
+                    const series = new TimelineDataSeries();
+                    framerateSeries[graphName].set(ssrc, series);
+                    if (framerateSeries[graphName].size === 2) {
+                        series.setColor('green');
+                    } else if (framerateSeries[graphName].size === 3) {
+                        series.setColor('blue');
+                    }
+                    colorSeries[report.frameWidth + 'x' + report.frameHeight] = series.color_
+                    const id = idSeries[report.frameWidth + 'x' + report.frameHeight]
+                    if (bitrateSeries.hasOwnProperty(id)) {
+                        bitrateSeries[id].setColor(series.color_);
+                        framerateSeries[id].setColor(series.color_);
+                    } else {
+                        console.warn('not found:', id, series.color_)
+                    }
+                }
+                framerateSeries[graphName].get(ssrc).addPoint(now, framerate);
             }
 
             if (bitrate >= 0) {
