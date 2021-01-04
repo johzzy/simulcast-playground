@@ -60,7 +60,9 @@
             saveAs(blob, "sdp.json")
         }
         // let codecs_white_list = ["VP8", "VP9", "H264", "red", "ulpfec"]
-        let codecs_white_list = ['VP9', 'VP8']
+        // let codecs_white_list = ['VP8']
+        // let codecs_white_list = ['VP9']
+        let codecs_white_list = ['H264']
 
 
         const pc1 = new RTCPeerConnection({ sdpSemantics: 'unified-plan' })
@@ -108,6 +110,12 @@
                 // Filter rtx as we have no wait to reinterpret rrid. Not doing this makes probing use RTX, its not understood
                 // and ramp-up is slower.
                 rtpParameters.codecs = rtpParameters.codecs.filter(c => c.name.toUpperCase() !== 'RTX');
+                {
+                    console.log(rtpParameters.codecs.map(codec => codec.name).filter(function onlyUnique(value, index, self) {
+                                    return self.indexOf(value) === index
+                                }))
+                    rtpParameters.codecs = rtpParameters.codecs.filter(codec => codecs_white_list.includes(codec.name.toUpperCase()))
+                }
 
                 let sdp = SDPUtils.writeSessionBoilerplate() +
                     SDPUtils.writeDtlsParameters(dtls, 'actpass') +
@@ -164,8 +172,7 @@
                     console.log(rtpParameters.codecs.map(codec => codec.name).filter(function onlyUnique(value, index, self) {
                                     return self.indexOf(value) === index
                                 }))
-                    let codecs = rtpParameters.codecs.filter(codec => codecs_white_list.includes(codec.name))
-                    rtpParameters.codecs = codecs
+                    rtpParameters.codecs = rtpParameters.codecs.filter(codec => codecs_white_list.includes(codec.name.toUpperCase()))
                 }
                 const codecs = SDPUtils.writeRtpDescription('video', rtpParameters) +
                     SDPUtils.writeRtcpParameters({
