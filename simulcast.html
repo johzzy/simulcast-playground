@@ -7,6 +7,7 @@
     <script src="https://webrtc.github.io/samples/src/js/third_party/graph.js"></script>
     <script src="test-assert.js"></script>
     <script src="draw-graphs.js"></script>
+    <script src="js/FileSaver.js"></script>
     <style>
         video {
             width: 480px;
@@ -15,6 +16,7 @@
 </head>
 
 <body>
+    <input type="button" id="export" value="export sdp" onclick="exportSdpObjectToFile()"/>
     <div id="local">
         <h2>Local Video</h2>
     </div>
@@ -40,9 +42,26 @@
             return canvas.captureStream(60)
         }
 
-        function console_log(text, sdp) {
-            console.log(`\n===== ${text} sdp: =====\n${sdp}`)
+        let sdpObject = {
+            offer: {},
+            answer: {}
         }
+        function console_log(text, sdp, type, status) {
+            // console.log(`\n===== ${text}(${type}, ${status}) sdp: =====\n${sdp}`)
+            let obj = {
+                sdp: sdp,
+                text: `${text}(${type}, ${status})`
+            }
+            sdpObject[type][status] = obj
+        }
+
+        let exportSdpObjectToFile = function() {
+            let blob = new Blob([JSON.stringify(sdpObject)], {type: "text/plain;charset=utf-8"})
+            saveAs(blob, "sdp.json")
+        }
+        // let codecs_white_list = ["VP8", "VP9", "H264", "red", "ulpfec"]
+        let codecs_white_list = ['VP9', 'VP8']
+
 
         const pc1 = new RTCPeerConnection({ sdpSemantics: 'unified-plan' })
         const pc2 = new RTCPeerConnection({ sdpSemantics: 'unified-plan' })
@@ -70,7 +89,7 @@
                 return pc1.createOffer();
             })
             .then((offer) => {
-                console_log('pc1.createOffer(offer, origin)', offer.sdp)
+                console_log('pc1.createOffer', offer.sdp, 'offer', 'origin')
                 const sections = SDPUtils.splitSections(offer.sdp);
                 const dtls = SDPUtils.getDtlsParameters(sections[1], sections[0]);
                 const ice = SDPUtils.getIceParameters(sections[1], sections[0]);
@@ -114,7 +133,7 @@
                     'a=mid:' + rids[2] + '\r\n' +
                     'a=msid:hi hi\r\n';
 
-                console_log('pc2.setRemoteDescription(offer, modified)', sdp)
+                console_log('pc2.setRemoteDescription', sdp, 'offer', 'modified')
                 return Promise.all([
                     pc1.setLocalDescription(offer),
                     pc2.setRemoteDescription({
@@ -125,7 +144,7 @@
             })
             .then(() => pc2.createAnswer())
             .then(answer => {
-                console_log('pc2.createAnswer(answer, origin)', answer.sdp)
+                console_log('pc2.createAnswer', answer.sdp, 'answer', 'origin')
                 const sections = SDPUtils.splitSections(answer.sdp);
                 const dtls = SDPUtils.getDtlsParameters(sections[1], sections[0]);
                 const ice = SDPUtils.getIceParameters(sections[1], sections[0]);
@@ -140,11 +159,22 @@
                     SDPUtils.writeIceParameters(ice) +
                     'a=group:BUNDLE 0\r\n' +
                     'a=msid-semantic:WMS *\r\n';
+
+                {
+                    console.log(rtpParameters.codecs.map(codec => codec.name).filter(function onlyUnique(value, index, self) {
+                                    return self.indexOf(value) === index
+                                }))
+                    let codecs = rtpParameters.codecs.filter(codec => codecs_white_list.includes(codec.name))
+                    rtpParameters.codecs = codecs
+                }
                 const codecs = SDPUtils.writeRtpDescription('video', rtpParameters) +
                     SDPUtils.writeRtcpParameters({
                         mux: rtcpParameters.mux,
                         reducedSize: rtcpParameters.reducedSize,
                     });
+
+                
+
                 sdp += codecs;
                 sdp += 'a=setup:active\r\n';
 
@@ -162,7 +192,7 @@
                         sdp += 'a=extmap:' + ext.id + ' ' + ext.uri + '\r\n';
                     }
                 });
-                console_log('pc1.setRemoteDescription(answer, modified)', sdp)
+                console_log('pc1.setRemoteDescription', sdp, 'answer', 'modified')
                 return Promise.all([
                     pc2.setLocalDescription(answer),
                     pc1.setRemoteDescription({
@@ -175,6 +205,7 @@
                 window.setInterval(() => {
                     draw(pc1, pc2);
                 }, 2000);
+                // console.log(sdpObject)
             })
             .catch(e => console.error(e));
     </script>
