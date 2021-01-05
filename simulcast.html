@@ -42,15 +42,27 @@
             return canvas.captureStream(60)
         }
 
+        function titleCase(str) {
+            return str.toLowerCase().split(' ').map(function(word) {
+                return word.replace(word[0], word[0].toUpperCase())
+            }).join(' ')
+        }
+
+        function fixedPeerComment(text) {
+            return text.replace('pc1.', 'Peer A ').replace('pc2.', 'Peer B ')
+        }
+
+
         let sdpObject = {
             offer: {},
             answer: {}
         }
         function console_log(text, sdp, type, status) {
-            // console.log(`\n===== ${text}(${type}, ${status}) sdp: =====\n${sdp}`)
+            const desc = `${titleCase(type)} SDP: ${fixedPeerComment(text)} ${status}`
+            console.log(desc)
             let obj = {
                 sdp: sdp,
-                text: `${text}(${type}, ${status})`
+                text: desc
             }
             sdpObject[type][status] = obj
         }
@@ -60,9 +72,13 @@
             saveAs(blob, "sdp.json")
         }
         // let codecs_white_list = ["VP8", "VP9", "H264", "red", "ulpfec"]
-        // let codecs_white_list = ['VP8']
+        let codecs_white_list = ['VP8']
         // let codecs_white_list = ['VP9']
-        let codecs_white_list = ['H264']
+        // let codecs_white_list = ['H264']
+
+        let [offer_status, answer_status] = ['modified', 'modified']
+        // offer_status = 'origin'
+        // answer_status = 'origin'
 
 
         const pc1 = new RTCPeerConnection({ sdpSemantics: 'unified-plan' })
@@ -77,6 +93,11 @@
             'urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id',
         ]
         const rids = [0, 1, 2]
+        const rids_mapping = {
+            low: 0,
+            mid: 1,
+            hi: 2,
+        }
         navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
         // let promise = new Promise(() => {
         //         return whiteNoiseStream({ width: 1280, height: 720 })
@@ -90,7 +111,7 @@
                 show(stream, false);
                 return pc1.createOffer();
             })
-            .then((offer) => {
+            .then(offer => {
                 console_log('pc1.createOffer', offer.sdp, 'offer', 'origin')
                 const sections = SDPUtils.splitSections(offer.sdp);
                 const dtls = SDPUtils.getDtlsParameters(sections[1], sections[0]);
@@ -111,9 +132,10 @@
                 // and ramp-up is slower.
                 rtpParameters.codecs = rtpParameters.codecs.filter(c => c.name.toUpperCase() !== 'RTX');
                 {
-                    console.log(rtpParameters.codecs.map(codec => codec.name).filter(function onlyUnique(value, index, self) {
+                    let origin_codecs = rtpParameters.codecs.map(codec => codec.name).filter(function onlyUnique(value, index, self) {
                                     return self.indexOf(value) === index
-                                }))
+                                })
+                    // console.log(origin_codecs)
                     rtpParameters.codecs = rtpParameters.codecs.filter(codec => codecs_white_list.includes(codec.name.toUpperCase()))
                 }
 
@@ -128,20 +150,18 @@
                         reducedSize: rtcpParameters.reducedSize,
                     });
                 // console.log('codecs:', codecs);
-                sdp += codecs +
-                    'a=setup:actpass\r\n' +
-                    'a=mid:' + rids[0] + '\r\n' +
-                    'a=msid:low low\r\n';
-                sdp += codecs +
-                    'a=setup:actpass\r\n' +
-                    'a=mid:' + rids[1] + '\r\n' +
-                    'a=msid:mid mid\r\n';
-                sdp += codecs +
-                    'a=setup:actpass\r\n' +
-                    'a=mid:' + rids[2] + '\r\n' +
-                    'a=msid:hi hi\r\n';
+                for (let msid in rids_mapping) {
+                    sdp += codecs +
+                        'a=setup:actpass\r\n' +
+                        'a=mid:' + rids_mapping[msid] + '\r\n' +
+                        'a=msid:' + msid + ' ' + msid + '\r\n'
+                }
 
-                console_log('pc2.setRemoteDescription', sdp, 'offer', 'modified')
+                if (offer_status === 'origin') {
+                    sdp = offer.sdp 
+                }
+                console_log('pc1.setLocalDescription origin, pc2.setRemoteDescription', sdp, 'offer', offer_status)
+                console.log('sdp === offer.sdp ? ', sdp === offer.sdp)
                 return Promise.all([
                     pc1.setLocalDescription(offer),
                     pc2.setRemoteDescription({
@@ -169,9 +189,10 @@
                     'a=msid-semantic:WMS *\r\n';
 
                 {
-                    console.log(rtpParameters.codecs.map(codec => codec.name).filter(function onlyUnique(value, index, self) {
+                    let origin_codecs = rtpParameters.codecs.map(codec => codec.name).filter(function onlyUnique(value, index, self) {
                                     return self.indexOf(value) === index
-                                }))
+                                })
+                    // console.log(origin_codecs)
                     rtpParameters.codecs = rtpParameters.codecs.filter(codec => codecs_white_list.includes(codec.name.toUpperCase()))
                 }
                 const codecs = SDPUtils.writeRtpDescription('video', rtpParameters) +
@@ -199,7 +220,12 @@
                         sdp += 'a=extmap:' + ext.id + ' ' + ext.uri + '\r\n';
                     }
                 });
-                console_log('pc1.setRemoteDescription', sdp, 'answer', 'modified')
+
+                if (answer_status === 'origin') {
+                    sdp = answer.sdp 
+                }
+                console_log('pc2.setLocalDescription origin, pc1.setRemoteDescription', sdp, 'answer', answer_status)
+                console.log('sdp === answer.sdp ? ', sdp === answer.sdp)
                 return Promise.all([
                     pc2.setLocalDescription(answer),
                     pc1.setRemoteDescription({
@@ -211,6 +237,7 @@
             .then(() => {
                 window.setInterval(() => {
                     draw(pc1, pc2);
+                    // draw(pc2, pc1);
                 }, 2000);
                 // console.log(sdpObject)
             })
