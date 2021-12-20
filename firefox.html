@@ -101,6 +101,8 @@ navigator.mediaDevices.getUserMedia({video: {wіdth: 1280, height: 720}})
             ssrcs[2] + '\r\n';
     }
     ssrc2track = ssrcs.map(line => (line.split(' ')[0].split(':')[1] >>> 0));
+    console.log('alice/pc1 offer:\n', offer.sdp)
+    // console.log('bob/pc2 offer:\n', sdp)
     return Promise.all([
         pc1.setLocalDescription(offer),
         pc2.setRemoteDescription({type: 'offer', sdp})
@@ -139,6 +141,8 @@ navigator.mediaDevices.getUserMedia({video: {wіdth: 1280, height: 720}})
             sdp += 'a=extmap:' + ext.id + ' ' + ext.uri + '\r\n';
         }
     });
+    console.log('alice/pc1 answer:', sdp)
+    // console.log('bob/pc2 answer:', answer.sdp)
     return Promise.all([
         pc2.setLocalDescription(answer),
         pc1.setRemoteDescription({type: 'answer', sdp})
